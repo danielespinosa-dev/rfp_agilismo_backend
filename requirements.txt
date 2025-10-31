@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+httpx
+motor
+pydantic
+python-dotenv
+pandas
+openpyxl
+python-multipart
+flask
+xlrd
+rarfile
+reportlab
