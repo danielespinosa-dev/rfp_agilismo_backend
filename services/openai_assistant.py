@@ -401,6 +401,7 @@ class OpenAIAssistant:
     async def add_files_to_vector_store(self, vector_store_id: str, file_ids: List[str]) -> Optional[List[Dict[str, Any]]]:
         """
         Agrega archivos a un vector store existente en OpenAI, uno por uno.
+        Reintenta hasta 3 veces por archivo si la API falla.
         Retorna la lista de respuestas del API.
         """
         results = []
@@ -408,16 +409,29 @@ class OpenAIAssistant:
             async with httpx.AsyncClient() as client:
                 for file_id in file_ids:
                     payload = {"file_id": file_id}
-                    response = await client.post(
-                        f"{self.base_url}/vector_stores/{vector_store_id}/files",
-                        headers=self.headers,
-                        json=payload
-                    )
-                    if response.status_code == 200:
-                        print(f"[OpenAI] Archivo {file_id} agregado al vector store {vector_store_id}")
-                        results.append(response.json())
-                    else:
-                        print(f"[OpenAI][ERROR] add_files_to_vector_store {response.status_code} - {response.text}")
+                    attempts = 0
+                    success = False
+                    while attempts < 3 and not success:
+                        try:
+                            response = await client.post(
+                                f"{self.base_url}/vector_stores/{vector_store_id}/files",
+                                headers=self.headers,
+                                json=payload
+                            )
+                            if response.status_code == 200:
+                                print(f"[OpenAI] Archivo {file_id} agregado al vector store {vector_store_id}")
+                                results.append(response.json())
+                                success = True
+                            else:
+                                print(f"[OpenAI][ERROR] add_files_to_vector_store {response.status_code} - {response.text}")
+                                attempts += 1
+                                if attempts < 3:
+                                    await asyncio.sleep(2)
+                        except Exception as e:
+                            attempts += 1
+                            print(f"[OpenAI][ERROR] add_files_to_vector_store intento {attempts} para archivo {file_id}: {str(e)}")
+                            if attempts < 3:
+                                await asyncio.sleep(2)
             return results
         except Exception as e:
             print(f"[OpenAI][ERROR] add_files_to_vector_store Unexpected error: {str(e)}")
@@ -426,6 +440,7 @@ class OpenAIAssistant:
     async def delete_all_files_from_vector_store(self, vector_store_id: str) -> bool:
         """
         Elimina todos los archivos de un vector store en OpenAI.
+        Reintenta hasta 3 veces por archivo si la API falla.
         """
         try:
             # Obtener la lista de archivos en el vector store
@@ -437,16 +452,29 @@ class OpenAIAssistant:
                 response.raise_for_status()
                 files = response.json().get("data", [])
                 file_ids = [f.get("id") for f in files if f.get("id")]
-                # Eliminar cada archivo
+                # Eliminar cada archivo con reintentos
                 for file_id in file_ids:
-                    del_response = await client.delete(
-                        f"{self.base_url}/vector_stores/{vector_store_id}/files/{file_id}",
-                        headers=self.headers
-                    )
-                    if del_response.status_code == 200:
-                        print(f"[OpenAI] Archivo {file_id} eliminado del vector store {vector_store_id}")
-                    else:
-                        print(f"[OpenAI][ERROR] No se pudo eliminar archivo {file_id} del vector store {vector_store_id} - {del_response.status_code}")
+                    attempts = 0
+                    success = False
+                    while attempts < 3 and not success:
+                        try:
+                            del_response = await client.delete(
+                                f"{self.base_url}/vector_stores/{vector_store_id}/files/{file_id}",
+                                headers=self.headers
+                            )
+                            if del_response.status_code == 200:
+                                print(f"[OpenAI] Archivo {file_id} eliminado del vector store {vector_store_id}")
+                                success = True
+                            else:
+                                print(f"[OpenAI][ERROR] No se pudo eliminar archivo {file_id} del vector store {vector_store_id} - {del_response.status_code}")
+                                attempts += 1
+                                if attempts < 3:
+                                    await asyncio.sleep(2)
+                        except Exception as e:
+                            attempts += 1
+                            print(f"[OpenAI][ERROR] delete_all_files_from_vector_store intento {attempts} para archivo {file_id}: {str(e)}")
+                            if attempts < 3:
+                                await asyncio.sleep(2)
             return True
         except Exception as e:
             print(f"[OpenAI][ERROR] delete_all_files_from_vector_store Unexpected error: {str(e)}")
